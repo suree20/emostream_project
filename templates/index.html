@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emoji Stream Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .emoji-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .emoji-btn {
+            font-size: 24px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background: white;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        
+        .emoji-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        .log-container {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+        
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .user-id {
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        
+        .toggle-btn {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        .toggle-btn:hover {
+            background: #0056b3;
+        }
+        
+        .status {
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>Emoji Stream Client</h1>
+    
+    <div class="controls">
+        <input type="text" id="userId" class="user-id" placeholder="Enter user ID">
+        <button id="connectBtn" class="toggle-btn">Connect</button>
+        <button id="automatedBtn" class="toggle-btn">Start Automated Sender</button>
+        <span id="status" class="status">Disconnected</span>
+    </div>
+    
+    <div class="emoji-container">
+        <button class="emoji-btn" data-emoji="👍">👍</button>
+        <button class="emoji-btn" data-emoji="❤️">❤️</button>
+        <button class="emoji-btn" data-emoji="😂">😂</button>
+        <button class="emoji-btn" data-emoji="🎉">🎉</button>
+        <button class="emoji-btn" data-emoji="😢">😢</button>
+        <button class="emoji-btn" data-emoji="🔥">🔥</button>
+        <button class="emoji-btn" data-emoji="👏">👏</button>
+        <button class="emoji-btn" data-emoji="🏆">🏆</button>
+        <button class="emoji-btn" data-emoji="😮">😮</button>
+        <button class="emoji-btn" data-emoji="💔">💔</button>
+    </div>
+    
+    <div class="log-container" id="log"></div>
+    <script>
+        let eventSource = null;
+        let connected = false;
+        let automatedRunning = false;
+        
+        function appendLog(message) {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function connect(userId) {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            eventSource = new EventSource(`/events?user_id=${userId}`);
+            
+            eventSource.onmessage = function(event) {
+                if (event.data !== 'ping') {
+                    appendLog(event.data);
+                }
+            };
+            
+            eventSource.onerror = function() {
+                document.getElementById('status').textContent = 'Disconnected';
+                connected = false;
+                eventSource.close();
+            };
+            
+            document.getElementById('status').textContent = 'Connected';
+            connected = true;
+        }
+        
+        document.getElementById('connectBtn').addEventListener('click', function() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Please enter a user ID');
+                return;
+            }
+            
+            if (!connected) {
+                connect(userId);
+                this.textContent = 'Disconnect';
+            } else {
+                if (eventSource) {
+                    eventSource.close();
+                }
+                document.getElementById('status').textContent = 'Disconnected';
+                connected = false;
+                this.textContent = 'Connect';
+            }
+        });
+        
+        document.getElementById('automatedBtn').addEventListener('click', function() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Please enter a user ID');
+                return;
+            }
+            
+            fetch('/toggle_automated', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    start: !automatedRunning
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                automatedRunning = !automatedRunning;
+                this.textContent = automatedRunning ? 'Stop Automated Sender' : 'Start Automated Sender';
+                appendLog(data.status);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                appendLog('Error toggling automated sender');
+            });
+        });
+        
+        document.querySelectorAll('.emoji-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const userId = document.getElementById('userId').value;
+                if (!userId) {
+                    alert('Please enter a user ID');
+                    return;
+                }
+                
+                const emoji = this.dataset.emoji;
+                fetch('/send_emoji_local', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        emoji_type: emoji,
+                        timestamp: new Date().toISOString()
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        appendLog(`Error sending emoji: ${data.error}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    appendLog('Error sending emoji');
+                });
+            });
+        });
+    </script>
+</body>
+</html>
