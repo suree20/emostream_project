@@ -1,1 +1,1 @@
-# EC-Team-27-emostream-concurrent-emoji-broadcast-over-event-driven-architecture
+# A real-time emoji streaming platform created using kafka, pyspark and flask
